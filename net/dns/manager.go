@@ -28,9 +28,7 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
-var (
-	errFullQueue = errors.New("request queue full")
-)
+var errFullQueue = errors.New("request queue full")
 
 // maxActiveQueries returns the maximal number of DNS requests that can
 // be running.
@@ -498,6 +496,4 @@ func CleanUp(logf logger.Logf, netMon *netmon.Monitor, interfaceName string) {
 	}
 }
 
-var (
-	metricDNSQueryErrorQueue = clientmetric.NewCounter("dns_query_local_error_queue")
-)
+var metricDNSQueryErrorQueue = clientmetric.NewCounter("dns_query_local_error_queue")
