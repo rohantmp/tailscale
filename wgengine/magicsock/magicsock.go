@@ -1137,6 +1137,15 @@ func (c *Conn) sendUDP(ipp netip.AddrPort, b []byte) (sent bool, err error) {
 	} else {
 		if sent {
 			metricSendUDP.Add(1)
+
+			if stats := c.stats.Load(); stats != nil {
+				c.mu.Lock()
+				ep, ok := c.peerMap.endpointForIPPort(ipp)
+				c.mu.Unlock()
+				if ok {
+					stats.UpdateTxPhysical(ep.nodeAddr, ipp, 1, len(b))
+				}
+			}
 		}
 	}
 	return
