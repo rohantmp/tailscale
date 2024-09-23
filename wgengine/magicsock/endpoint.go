@@ -966,7 +966,7 @@ func (de *endpoint) send(buffs [][]byte) error {
 			for _, b := range buffs {
 				txBytes += len(b)
 			}
-			stats.UpdateTxPhysical(de.nodeAddr, udpAddr, txBytes)
+			stats.UpdateTxPhysical(de.nodeAddr, udpAddr, len(buffs), txBytes)
 		}
 	}
 	if derpAddr.IsValid() {
@@ -974,7 +974,7 @@ func (de *endpoint) send(buffs [][]byte) error {
 		for _, buff := range buffs {
 			ok, _ := de.c.sendAddr(derpAddr, de.publicKey, buff)
 			if stats := de.c.stats.Load(); stats != nil {
-				stats.UpdateTxPhysical(de.nodeAddr, derpAddr, len(buff))
+				stats.UpdateTxPhysical(de.nodeAddr, derpAddr, 1, len(buff))
 			}
 			if !ok {
 				allOk = false
