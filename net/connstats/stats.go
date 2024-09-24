@@ -131,7 +131,7 @@ func (s *Statistics) updateVirtual(b []byte, receive bool) {
 	s.virtual[conn] = cnts
 }
 
-// UpdateTxPhysical updates the counters for a transmitted wireguard packet
+// UpdateTxPhysical updates the counters for zero or more a transmitted wireguard packets.
 // The src is always a Tailscale IP address, representing some remote peer.
 // The dst is a remote IP address and port that corresponds
 // with some physical peer backing the Tailscale IP address.
@@ -139,7 +139,7 @@ func (s *Statistics) UpdateTxPhysical(src netip.Addr, dst netip.AddrPort, packet
 	s.updatePhysical(src, dst, packets, bytes, false)
 }
 
-// UpdateRxPhysical updates the counters for a received wireguard packet.
+// UpdateRxPhysical updates the counters for zero or more received wireguard packets.
 // The src is always a Tailscale IP address, representing some remote peer.
 // The dst is a remote IP address and port that corresponds
 // with some physical peer backing the Tailscale IP address.
