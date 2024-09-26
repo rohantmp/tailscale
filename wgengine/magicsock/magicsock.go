@@ -623,6 +623,13 @@ func registerMetrics(reg *usermetric.Registry) *metrics {
 		outboundBytesDERPTotal: &expvar.Int{},
 	}
 
+	// Map clientmetrics to the usermetric counters.
+	metricRecvDataPacketsIPv4.Register(m.inboundPacketsIPv4Total)
+	metricRecvDataPacketsIPv6.Register(m.inboundPacketsIPv6Total)
+	metricRecvDataPacketsDERP.Register(m.inboundPacketsDERPTotal)
+	metricSendUDP.Register(m.outboundPacketsIPv4Total)
+	metricSendUDP.Register(m.outboundPacketsIPv6Total)
+
 	inboundPacketsTotal.Set(pathDirectV4, m.inboundPacketsIPv4Total)
 	inboundPacketsTotal.Set(pathDirectV6, m.inboundPacketsIPv6Total)
 	inboundPacketsTotal.Set(pathDERP, m.inboundPacketsDERPTotal)
@@ -1272,8 +1279,6 @@ func (c *Conn) sendUDP(ipp netip.AddrPort, b []byte) (sent bool, err error) {
 		_ = c.maybeRebindOnError(runtime.GOOS, err)
 	} else {
 		if sent {
-			metricSendUDP.Add(1)
-
 			switch {
 			case ipp.Addr().Is4():
 				c.metrics.outboundPacketsIPv4Total.Add(1)
@@ -1421,28 +1426,22 @@ func (c *Conn) putReceiveBatch(batch *receiveBatch) {
 
 func (c *Conn) receiveIPv4() conn.ReceiveFunc {
 	return c.mkReceiveFunc(&c.pconn4, c.health.ReceiveFuncStats(health.ReceiveIPv4),
-		func(i int64) {
-			metricRecvDataPacketsIPv4.Add(i)
-			c.metrics.inboundPacketsIPv4Total.Add(i)
-		}, func(i int64) {
-			c.metrics.inboundBytesIPv4Total.Add(i)
-		})
+		c.metrics.inboundPacketsIPv4Total,
+		c.metrics.inboundBytesIPv4Total,
+	)
 }
 
 // receiveIPv6 creates an IPv6 ReceiveFunc reading from c.pconn6.
 func (c *Conn) receiveIPv6() conn.ReceiveFunc {
 	return c.mkReceiveFunc(&c.pconn6, c.health.ReceiveFuncStats(health.ReceiveIPv6),
-		func(i int64) {
-			metricRecvDataPacketsIPv6.Add(i)
-			c.metrics.inboundPacketsIPv6Total.Add(i)
-		}, func(i int64) {
-			c.metrics.inboundBytesIPv6Total.Add(i)
-		})
+		c.metrics.inboundPacketsIPv6Total,
+		c.metrics.inboundBytesIPv6Total,
+	)
 }
 
 // mkReceiveFunc creates a ReceiveFunc reading from ruc.
 // The provided healthItem and metrics are updated if non-nil.
-func (c *Conn) mkReceiveFunc(ruc *RebindingUDPConn, healthItem *health.ReceiveFuncStats, packetMetricFunc, bytesMetricFunc func(int64)) conn.ReceiveFunc {
+func (c *Conn) mkReceiveFunc(ruc *RebindingUDPConn, healthItem *health.ReceiveFuncStats, packetMetric, bytesMetric *expvar.Int) conn.ReceiveFunc {
 	// epCache caches an IPPort->endpoint for hot flows.
 	var epCache ippEndpointCache
 
@@ -1479,11 +1478,11 @@ func (c *Conn) mkReceiveFunc(ruc *RebindingUDPConn, healthItem *health.ReceiveFu
 				}
 				ipp := msg.Addr.(*net.UDPAddr).AddrPort()
 				if ep, ok := c.receiveIP(msg.Buffers[0][:msg.N], ipp, &epCache); ok {
-					if packetMetricFunc != nil {
-						packetMetricFunc(1)
+					if packetMetric != nil {
+						packetMetric.Add(1)
 					}
-					if bytesMetricFunc != nil {
-						bytesMetricFunc(int64(msg.N))
+					if bytesMetric != nil {
+						bytesMetric.Add(int64(msg.N))
 					}
 					eps[i] = ep
 					sizes[i] = msg.N
@@ -2532,6 +2531,8 @@ func (c *Conn) Close() error {
 		pinger.Close()
 	}
 
+	deregisterMetrics(c.metrics)
+
 	return nil
 }
 
@@ -3085,7 +3086,7 @@ var (
 	metricSendDERPErrorChan   = clientmetric.NewCounter("magicsock_send_derp_error_chan")
 	metricSendDERPErrorClosed = clientmetric.NewCounter("magicsock_send_derp_error_closed")
 	metricSendDERPErrorQueue  = clientmetric.NewCounter("magicsock_send_derp_error_queue")
-	metricSendUDP             = clientmetric.NewCounter("magicsock_send_udp")
+	metricSendUDP             = clientmetric.NewAggregateCounter("magicsock_send_udp")
 	metricSendUDPError        = clientmetric.NewCounter("magicsock_send_udp_error")
 	metricSendDERP            = clientmetric.NewCounter("magicsock_send_derp")
 	metricSendDERPError       = clientmetric.NewCounter("magicsock_send_derp_error")
@@ -3093,9 +3094,9 @@ var (
 	// Data packets (non-disco)
 	metricSendData            = clientmetric.NewCounter("magicsock_send_data")
 	metricSendDataNetworkDown = clientmetric.NewCounter("magicsock_send_data_network_down")
-	metricRecvDataPacketsDERP = clientmetric.NewCounter("magicsock_recv_data_derp")
-	metricRecvDataPacketsIPv4 = clientmetric.NewCounter("magicsock_recv_data_ipv4")
-	metricRecvDataPacketsIPv6 = clientmetric.NewCounter("magicsock_recv_data_ipv6")
+	metricRecvDataPacketsDERP = clientmetric.NewAggregateCounter("magicsock_recv_data_derp")
+	metricRecvDataPacketsIPv4 = clientmetric.NewAggregateCounter("magicsock_recv_data_ipv4")
+	metricRecvDataPacketsIPv6 = clientmetric.NewAggregateCounter("magicsock_recv_data_ipv6")
 
 	// Disco packets
 	metricSendDiscoUDP               = clientmetric.NewCounter("magicsock_disco_send_udp")

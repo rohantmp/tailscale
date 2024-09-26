@@ -1264,6 +1264,15 @@ func assertConnStatsAndUserMetricsEqual(t *testing.T, ms *magicStack) {
 	assertEqual(t, "derp packets outbound", physDERPTxPackets, metricDERPTxPackets)
 	assertEqual(t, "ipv4 packets inbound", physIPv4RxPackets, metricIPv4RxPackets)
 	assertEqual(t, "ipv4 packets outbound", physIPv4TxPackets, metricIPv4TxPackets)
+
+	// Validate that the usermetrics and clientmetrics are in sync
+	// Note: the clientmetrics are global, this means that when they are registering with the
+	// wgengine, multiple in-process nodes used by this test will be updating the same metrics. This is why we need to multiply
+	// the metrics by 2 to get the expected value.
+	// TODO(kradalby): https://github.com/tailscale/tailscale/issues/13420
+	assertEqual(t, "outbound UDP packets - compare with clientmetric", metricSendUDP.Value(), metricIPv4TxPackets*2)
+	assertEqual(t, "inbound IPv4 packets - compare with clientmetric", metricRecvDataPacketsIPv4.Value(), metricIPv4RxPackets*2)
+	assertEqual(t, "inbound DERP packets - compare with clientmetric", metricRecvDataPacketsDERP.Value(), metricDERPRxPackets*2)
 }
 
 func assertEqual(t *testing.T, name string, a, b any) {
