@@ -4,8 +4,11 @@
 package clientmetric
 
 import (
+	"expvar"
 	"testing"
 	"time"
+
+	qt "github.com/frankban/quicktest"
 )
 
 func TestDeltaEncBuf(t *testing.T) {
@@ -106,4 +109,44 @@ func TestWithFunc(t *testing.T) {
 	if got, want := EncodeLogTailMetricsDelta(), "I029a05"; got != want {
 		t.Errorf("second = %q; want %q", got, want)
 	}
+}
+
+func TestAggregateCounter(t *testing.T) {
+	clearMetrics()
+
+	c := qt.New(t)
+
+	expv1 := &expvar.Int{}
+	expv2 := &expvar.Int{}
+	expv3 := &expvar.Int{}
+
+	aggCounter := NewAggregateCounter("agg_counter")
+
+	aggCounter.Register(expv1)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(0))
+
+	expv1.Add(1)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(1))
+
+	aggCounter.Register(expv2)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(1))
+
+	expv1.Add(1)
+	expv2.Add(1)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(3))
+
+	expv3.Set(5)
+	aggCounter.Register(expv3)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(8))
+
+	// Registering the same expvar multiple times should not change the value
+	aggCounter.Register(expv3)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(8))
+
+	aggCounter.Deregister(expv2)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(7))
+
+	aggCounter.Deregister(expv1)
+	aggCounter.Deregister(expv3)
+	c.Assert(aggCounter.Value(), qt.Equals, int64(0))
 }
