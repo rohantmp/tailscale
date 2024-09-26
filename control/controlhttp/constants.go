@@ -6,6 +6,7 @@ package controlhttp
 import (
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"tailscale.com/health"
@@ -90,13 +91,16 @@ type Dialer struct {
 
 	proxyFunc func(*http.Request) (*url.URL, error) // or nil
 
+	lastDial atomic.Int64 // unix seconds
+
 	// For tests only
 	drainFinished        chan struct{}
 	omitCertErrorLogging bool
 	testFallbackDelay    time.Duration
 
-	// tstime.Clock is used instead of time package for methods such as time.Now.
-	// If not specified, will default to tstime.StdClock{}.
+	// Clock, if non-nil, overrides the clock to use.
+	// If nil, tstime.StdClock is used.
+	// This exists primarily for tests.
 	Clock tstime.Clock
 }
 

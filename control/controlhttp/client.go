@@ -86,7 +86,7 @@ func (a *Dialer) getProxyFunc() func(*http.Request) (*url.URL, error) {
 // httpsFallbackDelay is how long we'll wait for a.HTTPPort to work before
 // starting to try a.HTTPSPort.
 func (a *Dialer) httpsFallbackDelay() time.Duration {
-	if forceNoise443() {
+	if a.forceNoise443() {
 		return time.Nanosecond
 	}
 	if v := a.testFallbackDelay; v != 0 {
@@ -151,10 +151,7 @@ func (a *Dialer) dial(ctx context.Context) (*ClientConn, error) {
 			// before we do anything.
 			if c.DialStartDelaySec > 0 {
 				a.logf("[v2] controlhttp: waiting %.2f seconds before dialing %q @ %v", c.DialStartDelaySec, a.Hostname, c.IP)
-				if a.Clock == nil {
-					a.Clock = tstime.StdClock{}
-				}
-				tmr, tmrChannel := a.Clock.NewTimer(time.Duration(c.DialStartDelaySec * float64(time.Second)))
+				tmr, tmrChannel := a.clock().NewTimer(time.Duration(c.DialStartDelaySec * float64(time.Second)))
 				defer tmr.Stop()
 				select {
 				case <-ctx.Done():
@@ -268,6 +265,31 @@ func (a *Dialer) dial(ctx context.Context) (*ClientConn, error) {
 // fixed, this is a workaround. It might also be useful for future debugging.
 var forceNoise443 = envknob.RegisterBool("TS_FORCE_NOISE_443")
 
+func (d *Dialer) forceNoise443() bool {
+	if forceNoise443() {
+		return true
+	}
+
+	now := d.clock().Now().Unix()
+	last := d.lastDial.Load()
+	d.lastDial.Store(now)
+	if now-last < 120 {
+		// If we dialed in the past two minutes, assume there
+		// was a recent failure and fall back to HTTPS dials
+		// for the subsequent retries.
+		return true
+	}
+
+	return false
+}
+
+func (d *Dialer) clock() tstime.Clock {
+	if d.Clock != nil {
+		return d.Clock
+	}
+	return tstime.StdClock{}
+}
+
 var debugNoiseDial = envknob.RegisterBool("TS_DEBUG_NOISE_DIAL")
 
 // dialHost connects to the configured Dialer.Hostname and upgrades the
@@ -320,16 +342,13 @@ func (a *Dialer) dialHost(ctx context.Context, addr netip.Addr) (*ClientConn, er
 	}
 
 	// Start the plaintext HTTP attempt first, unless disabled by the envknob.
-	if !forceNoise443() {
+	if !a.forceNoise443() {
 		go try(u80)
 	}
 
 	// In case outbound port 80 blocked or MITM'ed poorly, start a backup timer
 	// to dial port 443 if port 80 doesn't either succeed or fail quickly.
-	if a.Clock == nil {
-		a.Clock = tstime.StdClock{}
-	}
-	try443Timer := a.Clock.AfterFunc(a.httpsFallbackDelay(), func() { try(u443) })
+	try443Timer := a.clock().AfterFunc(a.httpsFallbackDelay(), func() { try(u443) })
 	defer try443Timer.Stop()
 
 	var err80, err443 error
